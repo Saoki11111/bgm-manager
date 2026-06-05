@@ -24,6 +24,8 @@
 @property NSMenuItem *nowPlayingItem;
 @property NSMenuItem *remainingItem;
 @property NSMenuItem *progressItem;
+@property NSString *currentPlaybackPath;
+@property BOOL playlistMode;
 @end
 
 @implementation AppDelegate
@@ -117,6 +119,16 @@
     pause.enabled = self.mpvTask.isRunning;
     [menu addItem:pause];
 
+    NSMenuItem *previous = [[NSMenuItem alloc] initWithTitle:@"前の曲" action:@selector(previousTrack) keyEquivalent:@"["];
+    previous.target = self;
+    previous.enabled = self.mpvTask.isRunning && self.playlistMode;
+    [menu addItem:previous];
+
+    NSMenuItem *next = [[NSMenuItem alloc] initWithTitle:@"次の曲" action:@selector(nextTrack) keyEquivalent:@"]"];
+    next.target = self;
+    next.enabled = self.mpvTask.isRunning && self.playlistMode;
+    [menu addItem:next];
+
     NSMenuItem *stop = [[NSMenuItem alloc] initWithTitle:@"停止（再生を終了）" action:@selector(stopAction) keyEquivalent:@"."];
     stop.target = self;
     stop.enabled = self.mpvTask.isRunning;
@@ -159,7 +171,7 @@
     if (self.mediaDuration > 0) {
         progress = [progress stringByAppendingFormat:@" / %@", [self formatTime:self.mediaDuration]];
     }
-    self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", self.currentTitle];
+    self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", [self displayTitle]];
     if (self.durationOverrideEnabled) {
         NSTimeInterval remaining = MAX(0, self.duration - elapsed);
         self.remainingItem.title = [NSString stringWithFormat:@"タイマー: %@ / %@  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], [self formatTime:remaining]];
@@ -226,10 +238,14 @@
     [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
     NSMutableArray *arguments = [@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle"] mutableCopy];
     if (self.durationOverrideEnabled) [arguments addObject:@"--loop-playlist=inf"];
-    [self startPlayback:@"全曲ランダム" arguments:arguments];
+    [self startPlayback:@"ランダム再生" arguments:arguments playlistMode:YES];
 }
 
 - (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments {
+    [self startPlayback:title arguments:arguments playlistMode:NO];
+}
+
+- (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments playlistMode:(BOOL)playlistMode {
     [self stopPlayback];
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
 
@@ -259,6 +275,7 @@
     if ([task launchAndReturnError:&error]) {
         self.mpvTask = task;
         self.currentTitle = title;
+        self.playlistMode = playlistMode;
         self.startedAt = [NSDate date];
         self.paused = NO;
         if (self.durationOverrideEnabled) [self scheduleStopTimer];
@@ -286,6 +303,20 @@
 
 - (void)stopAction {
     [self stopPlayback];
+}
+
+- (void)nextTrack {
+    if (!self.mpvTask.isRunning || !self.playlistMode) return;
+    [self sendMPVCommand:@[@"playlist-next", @"force"]];
+    [self refreshPlaybackProgress];
+    [self updatePlaybackMenuItems];
+}
+
+- (void)previousTrack {
+    if (!self.mpvTask.isRunning || !self.playlistMode) return;
+    [self sendMPVCommand:@[@"playlist-prev", @"force"]];
+    [self refreshPlaybackProgress];
+    [self updatePlaybackMenuItems];
 }
 
 - (void)stopPlayback {
@@ -322,6 +353,8 @@
     self.playbackPosition = 0;
     self.mediaDuration = 0;
     self.hasPlaybackPosition = NO;
+    self.currentPlaybackPath = nil;
+    self.playlistMode = NO;
     [self.stopTimer invalidate];
     self.stopTimer = nil;
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
@@ -461,12 +494,24 @@
 - (void)refreshPlaybackProgress {
     NSNumber *position = [self mpvProperty:@"time-pos"];
     NSNumber *duration = [self mpvProperty:@"duration"];
+    NSString *path = [self mpvStringProperty:@"path"];
     self.hasPlaybackPosition = position != nil;
     if (position) self.playbackPosition = position.doubleValue;
     if (duration) self.mediaDuration = duration.doubleValue;
+    if (path.length > 0) self.currentPlaybackPath = path;
 }
 
 - (NSNumber *)mpvProperty:(NSString *)name {
+    id value = [self mpvPropertyValue:name];
+    return [value isKindOfClass:[NSNumber class]] ? value : nil;
+}
+
+- (NSString *)mpvStringProperty:(NSString *)name {
+    id value = [self mpvPropertyValue:name];
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+- (id)mpvPropertyValue:(NSString *)name {
     NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"command": @[@"get_property", name]} options:0 error:nil];
     if (!data) return nil;
     NSMutableData *message = [data mutableCopy];
@@ -484,7 +529,7 @@
     address.sun_family = AF_UNIX;
     strlcpy(address.sun_path, self.socketPath.fileSystemRepresentation, sizeof(address.sun_path));
 
-    NSNumber *result = nil;
+    id result = nil;
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
         send(fd, message.bytes, message.length, 0);
         char buffer[4096] = {0};
@@ -492,12 +537,28 @@
         if (length > 0) {
             NSData *responseData = [NSData dataWithBytes:buffer length:(NSUInteger)length];
             NSDictionary *response = [NSJSONSerialization JSONObjectWithData:responseData options:0 error:nil];
-            id value = response[@"data"];
-            if ([value isKindOfClass:[NSNumber class]]) result = value;
+            result = response[@"data"];
         }
     }
     close(fd);
     return result;
+}
+
+- (NSString *)displayTitle {
+    NSString *matched = [self labelForPlaybackPath:self.currentPlaybackPath];
+    return matched.length > 0 ? matched : self.currentTitle;
+}
+
+- (NSString *)labelForPlaybackPath:(NSString *)path {
+    if (path.length == 0) return nil;
+    for (NSDictionary *song in self.songs) {
+        NSString *url = song[@"url"];
+        if ([url isKindOfClass:[NSString class]] && [url isEqualToString:path]) {
+            NSString *label = song[@"label"];
+            return [label isKindOfClass:[NSString class]] ? label : url;
+        }
+    }
+    return nil;
 }
 
 - (NSString *)formatTime:(NSTimeInterval)value {
