@@ -27,8 +27,10 @@
 
 @implementation AppDelegate
 
+static const NSTimeInterval DefaultDuration = 3600;
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.duration = 3600;
+    self.duration = DefaultDuration;
     self.socketPath = [NSString stringWithFormat:@"/tmp/bgm-manager-%d.sock", getuid()];
     self.repositoryPath = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"RepositoryPath"];
     self.songsPath = [self.repositoryPath stringByAppendingPathComponent:@"data/bgm-list.json"];
@@ -124,9 +126,6 @@
     NSMenuItem *add = [[NSMenuItem alloc] initWithTitle:@"URLを追加..." action:@selector(addURL) keyEquivalent:@"a"];
     add.target = self;
     [menu addItem:add];
-    NSMenuItem *reload = [[NSMenuItem alloc] initWithTitle:@"曲リストを再読み込み" action:@selector(reloadList) keyEquivalent:@""];
-    reload.target = self;
-    [menu addItem:reload];
     NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"BGM Managerを終了" action:@selector(quit) keyEquivalent:@"q"];
     quit.target = self;
     [menu addItem:quit];
@@ -170,6 +169,11 @@
         item.state = self.duration == [value[1] doubleValue] ? NSControlStateValueOn : NSControlStateValueOff;
         [menu addItem:item];
     }
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *reset = [[NSMenuItem alloc] initWithTitle:@"デフォルトに戻す（1時間）" action:@selector(resetDuration) keyEquivalent:@""];
+    reset.target = self;
+    reset.state = self.duration == DefaultDuration ? NSControlStateValueOn : NSControlStateValueOff;
+    [menu addItem:reset];
     return menu;
 }
 
@@ -324,11 +328,6 @@
     [self rebuildMenu];
 }
 
-- (void)reloadList {
-    [self loadSongs];
-    [self rebuildMenu];
-}
-
 - (void)addURL {
     [NSApp activateIgnoringOtherApps:YES];
 
@@ -398,6 +397,21 @@
         return;
     }
     self.songs = items;
+    [self rebuildMenu];
+}
+
+- (void)resetDuration {
+    if (self.mpvTask.isRunning) {
+        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+        if (DefaultDuration <= elapsed) {
+            [self showMessage:@"再生時間を変更しませんでした" info:@"すでに1時間以上経過しているため、即停止を避けるため変更していません。2時間または3時間を選ぶと延長できます。"];
+            return;
+        }
+        self.duration = DefaultDuration;
+        [self scheduleStopTimer];
+    } else {
+        self.duration = DefaultDuration;
+    }
     [self rebuildMenu];
 }
 
