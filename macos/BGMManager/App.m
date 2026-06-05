@@ -308,14 +308,24 @@
 - (void)nextTrack {
     if (!self.mpvTask.isRunning || !self.playlistMode) return;
     [self sendMPVCommand:@[@"playlist-next", @"force"]];
-    [self refreshPlaybackProgress];
-    [self updatePlaybackMenuItems];
+    [self resetPlaybackTimingAfterTrackChange];
 }
 
 - (void)previousTrack {
     if (!self.mpvTask.isRunning || !self.playlistMode) return;
     [self sendMPVCommand:@[@"playlist-prev", @"force"]];
+    [self resetPlaybackTimingAfterTrackChange];
+}
+
+- (void)resetPlaybackTimingAfterTrackChange {
+    self.startedAt = [NSDate date];
+    self.playbackPosition = 0;
+    self.mediaDuration = 0;
+    self.hasPlaybackPosition = NO;
+    self.currentPlaybackPath = nil;
+    if (self.durationOverrideEnabled) [self scheduleStopTimer];
     [self refreshPlaybackProgress];
+    [self updateStatusTitle];
     [self updatePlaybackMenuItems];
 }
 
@@ -365,11 +375,7 @@
     NSTimeInterval selectedDuration = [sender.representedObject doubleValue];
     self.durationOverrideEnabled = YES;
     if (self.mpvTask.isRunning) {
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-        if (selectedDuration <= elapsed) {
-            [self showMessage:@"再生時間を変更しませんでした" info:@"現在の経過時間より短い設定なので、即停止を避けるため変更していません。2時間または3時間を選ぶと延長できます。"];
-            return;
-        }
+        self.startedAt = [NSDate date];
         self.duration = selectedDuration;
         [self scheduleStopTimer];
     } else {
