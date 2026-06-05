@@ -12,6 +12,7 @@
 @property NSTimer *refreshTimer;
 @property NSDate *startedAt;
 @property NSTimeInterval duration;
+@property BOOL durationOverrideEnabled;
 @property NSString *currentTitle;
 @property BOOL paused;
 @property NSString *socketPath;
@@ -27,10 +28,9 @@
 
 @implementation AppDelegate
 
-static const NSTimeInterval DefaultDuration = 3600;
-
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.duration = DefaultDuration;
+    self.duration = 0;
+    self.durationOverrideEnabled = NO;
     self.socketPath = [NSString stringWithFormat:@"/tmp/bgm-manager-%d.sock", getuid()];
     self.repositoryPath = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"RepositoryPath"];
     self.songsPath = [self.repositoryPath stringByAppendingPathComponent:@"data/bgm-list.json"];
@@ -108,7 +108,7 @@ static const NSTimeInterval DefaultDuration = 3600;
     [menu addItem:random];
 
     [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *duration = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"再生時間: %@", [self formatDurationLabel:self.duration]] action:nil keyEquivalent:@""];
+    NSMenuItem *duration = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"再生時間: %@", [self durationMenuTitle]] action:nil keyEquivalent:@""];
     duration.submenu = [self durationMenu];
     [menu addItem:duration];
 
@@ -138,7 +138,13 @@ static const NSTimeInterval DefaultDuration = 3600;
     if (self.currentTitle) {
         [self refreshPlaybackProgress];
         NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-        self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:elapsed], [self formatTime:self.duration]];
+        if (self.durationOverrideEnabled) {
+            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:elapsed], [self formatTime:self.duration]];
+        } else if (self.mediaDuration > 0) {
+            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:self.playbackPosition], [self formatTime:self.mediaDuration]];
+        } else {
+            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@", [self formatTime:elapsed]];
+        }
         [self updatePlaybackMenuItems];
     } else {
         self.statusItem.button.title = @"♫";
@@ -148,32 +154,37 @@ static const NSTimeInterval DefaultDuration = 3600;
 - (void)updatePlaybackMenuItems {
     if (!self.currentTitle) return;
     NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-    NSTimeInterval remaining = MAX(0, self.duration - elapsed);
     NSString *position = self.hasPlaybackPosition ? [self formatTime:self.playbackPosition] : [self formatTime:elapsed];
     NSString *progress = [NSString stringWithFormat:@"曲位置: %@", position];
     if (self.mediaDuration > 0) {
         progress = [progress stringByAppendingFormat:@" / %@", [self formatTime:self.mediaDuration]];
     }
     self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", self.currentTitle];
-    self.remainingItem.title = [NSString stringWithFormat:@"タイマー: %@ / %@  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], [self formatTime:remaining]];
+    if (self.durationOverrideEnabled) {
+        NSTimeInterval remaining = MAX(0, self.duration - elapsed);
+        self.remainingItem.title = [NSString stringWithFormat:@"タイマー: %@ / %@  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], [self formatTime:remaining]];
+    } else {
+        self.remainingItem.title = @"再生時間: 曲の長さ";
+    }
     self.progressItem.title = progress;
 }
 
 - (NSMenu *)durationMenu {
     NSMenu *menu = [[NSMenu alloc] init];
+    NSMenuItem *autoDuration = [[NSMenuItem alloc] initWithTitle:@"自動（曲の長さ）" action:@selector(clearDurationOverride) keyEquivalent:@""];
+    autoDuration.target = self;
+    autoDuration.state = self.durationOverrideEnabled ? NSControlStateValueOff : NSControlStateValueOn;
+    [menu addItem:autoDuration];
+    [menu addItem:[NSMenuItem separatorItem]];
+
     NSArray *values = @[@[@"30分", @1800], @[@"1時間", @3600], @[@"2時間", @7200], @[@"3時間", @10800]];
     for (NSArray *value in values) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:value[0] action:@selector(chooseDuration:) keyEquivalent:@""];
         item.target = self;
         item.representedObject = value[1];
-        item.state = self.duration == [value[1] doubleValue] ? NSControlStateValueOn : NSControlStateValueOff;
+        item.state = self.durationOverrideEnabled && self.duration == [value[1] doubleValue] ? NSControlStateValueOn : NSControlStateValueOff;
         [menu addItem:item];
     }
-    [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *reset = [[NSMenuItem alloc] initWithTitle:@"デフォルトに戻す（1時間）" action:@selector(resetDuration) keyEquivalent:@""];
-    reset.target = self;
-    reset.state = self.duration == DefaultDuration ? NSControlStateValueOn : NSControlStateValueOff;
-    [menu addItem:reset];
     return menu;
 }
 
@@ -199,7 +210,9 @@ static const NSTimeInterval DefaultDuration = 3600;
 - (void)playSong:(NSMenuItem *)sender {
     if (sender.tag < 0 || sender.tag >= self.songs.count) return;
     NSDictionary *song = self.songs[sender.tag];
-    [self startPlayback:song[@"label"] arguments:@[song[@"url"], @"--loop-file=inf"]];
+    NSMutableArray *arguments = [NSMutableArray arrayWithObject:song[@"url"]];
+    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-file=inf"];
+    [self startPlayback:song[@"label"] arguments:arguments];
 }
 
 - (void)playRandom {
@@ -211,7 +224,9 @@ static const NSTimeInterval DefaultDuration = 3600;
     }
     NSString *contents = [[urls componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    [self startPlayback:@"全曲ランダム" arguments:@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle", @"--loop-playlist=inf"]];
+    NSMutableArray *arguments = [@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle"] mutableCopy];
+    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-playlist=inf"];
+    [self startPlayback:@"全曲ランダム" arguments:arguments];
 }
 
 - (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments {
@@ -246,7 +261,7 @@ static const NSTimeInterval DefaultDuration = 3600;
         self.currentTitle = title;
         self.startedAt = [NSDate date];
         self.paused = NO;
-        [self scheduleStopTimer];
+        if (self.durationOverrideEnabled) [self scheduleStopTimer];
         [self rebuildMenu];
     } else {
         [self clearPlaybackState];
@@ -255,6 +270,7 @@ static const NSTimeInterval DefaultDuration = 3600;
 
 - (void)scheduleStopTimer {
     [self.stopTimer invalidate];
+    if (!self.durationOverrideEnabled) return;
     NSTimeInterval elapsed = self.startedAt ? [[NSDate date] timeIntervalSinceDate:self.startedAt] : 0;
     NSTimeInterval remaining = MAX(1, self.duration - elapsed);
     self.stopTimer = [NSTimer timerWithTimeInterval:remaining target:self selector:@selector(stopAction) userInfo:nil repeats:NO];
@@ -314,6 +330,7 @@ static const NSTimeInterval DefaultDuration = 3600;
 
 - (void)chooseDuration:(NSMenuItem *)sender {
     NSTimeInterval selectedDuration = [sender.representedObject doubleValue];
+    self.durationOverrideEnabled = YES;
     if (self.mpvTask.isRunning) {
         NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
         if (selectedDuration <= elapsed) {
@@ -400,17 +417,14 @@ static const NSTimeInterval DefaultDuration = 3600;
     [self rebuildMenu];
 }
 
-- (void)resetDuration {
+- (void)clearDurationOverride {
+    self.durationOverrideEnabled = NO;
+    self.duration = 0;
+    [self.stopTimer invalidate];
+    self.stopTimer = nil;
     if (self.mpvTask.isRunning) {
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-        if (DefaultDuration <= elapsed) {
-            [self showMessage:@"再生時間を変更しませんでした" info:@"すでに1時間以上経過しているため、即停止を避けるため変更していません。2時間または3時間を選ぶと延長できます。"];
-            return;
-        }
-        self.duration = DefaultDuration;
-        [self scheduleStopTimer];
-    } else {
-        self.duration = DefaultDuration;
+        [self sendMPVCommand:@[@"set_property", @"loop-file", @"no"]];
+        [self sendMPVCommand:@[@"set_property", @"loop-playlist", @"no"]];
     }
     [self rebuildMenu];
 }
@@ -500,6 +514,11 @@ static const NSTimeInterval DefaultDuration = 3600;
     if (seconds % 3600 == 0) return [NSString stringWithFormat:@"%ld時間", (long)(seconds / 3600)];
     if (seconds % 60 == 0) return [NSString stringWithFormat:@"%ld分", (long)(seconds / 60)];
     return [self formatTime:value];
+}
+
+- (NSString *)durationMenuTitle {
+    if (!self.durationOverrideEnabled) return @"自動（曲の長さ）";
+    return [self formatDurationLabel:self.duration];
 }
 
 @end
