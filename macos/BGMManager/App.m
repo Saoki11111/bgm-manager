@@ -149,14 +149,7 @@
 - (void)updateStatusTitle {
     if (self.currentTitle) {
         [self refreshPlaybackProgress];
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-        if (self.durationOverrideEnabled) {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:elapsed], [self formatTime:self.duration]];
-        } else if (self.mediaDuration > 0) {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:self.playbackPosition], [self formatTime:self.mediaDuration]];
-        } else {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@", [self formatTime:elapsed]];
-        }
+        self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ %@", [self progressGlyph], [self compactTotalDurationLabel]];
         [self updatePlaybackMenuItems];
     } else {
         self.statusItem.button.title = @"♫";
@@ -174,9 +167,10 @@
     self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", [self displayTitle]];
     if (self.durationOverrideEnabled) {
         NSTimeInterval remaining = MAX(0, self.duration - elapsed);
-        self.remainingItem.title = [NSString stringWithFormat:@"タイマー: %@ / %@  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], [self formatTime:remaining]];
+        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], (long)[self progressPercent], [self formatTime:remaining]];
     } else {
-        self.remainingItem.title = @"再生時間: 曲の長さ";
+        NSString *total = self.mediaDuration > 0 ? [self formatTime:self.mediaDuration] : @"--:--";
+        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%", position, total, (long)[self progressPercent]];
     }
     self.progressItem.title = progress;
 }
@@ -599,6 +593,44 @@
 - (NSString *)durationMenuTitle {
     if (!self.durationOverrideEnabled) return @"自動（曲の長さ）";
     return [self formatDurationLabel:self.duration];
+}
+
+- (NSTimeInterval)progressTotalDuration {
+    if (self.durationOverrideEnabled) return self.duration;
+    return self.mediaDuration > 0 ? self.mediaDuration : 0;
+}
+
+- (NSTimeInterval)progressElapsedDuration {
+    if (self.durationOverrideEnabled) {
+        return [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+    }
+    return self.hasPlaybackPosition ? self.playbackPosition : [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+}
+
+- (NSInteger)progressPercent {
+    NSTimeInterval total = [self progressTotalDuration];
+    if (total <= 0) return 0;
+    NSTimeInterval elapsed = MAX(0, MIN([self progressElapsedDuration], total));
+    return (NSInteger)llround((elapsed / total) * 100.0);
+}
+
+- (NSString *)progressGlyph {
+    NSInteger percent = [self progressPercent];
+    if (percent < 25) return @"◔";
+    if (percent < 50) return @"◑";
+    if (percent < 75) return @"◕";
+    return @"●";
+}
+
+- (NSString *)compactTotalDurationLabel {
+    NSTimeInterval total = [self progressTotalDuration];
+    if (total <= 0) return @"";
+    NSInteger seconds = MAX(0, (NSInteger)llround(total));
+    NSInteger hours = seconds / 3600;
+    NSInteger minutes = (seconds % 3600) / 60;
+    if (hours > 0 && minutes > 0) return [NSString stringWithFormat:@"%ldh%ldm", (long)hours, (long)minutes];
+    if (hours > 0) return [NSString stringWithFormat:@"%ldh", (long)hours];
+    return [NSString stringWithFormat:@"%ldm", (long)MAX(1, minutes)];
 }
 
 @end

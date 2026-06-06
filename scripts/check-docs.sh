@@ -23,6 +23,7 @@ check_pair() {
 check_pair "URL add flow" "URLを追加..." "URLを追加"
 check_pair "song submenu" "曲を選ぶ" "曲を選ぶ"
 check_pair "source-duration default" "自動（曲の長さ）" "自動（曲の長さ）"
+check_pair "compact progress display" "ざっくりした進捗" "progressGlyph"
 check_pair "random current title" "ランダム再生中も" "displayTitle"
 check_pair "previous track" "前の曲" "previousTrack"
 check_pair "next track" "次の曲" "nextTrack"
