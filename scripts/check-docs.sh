@@ -10,11 +10,11 @@ check_pair() {
     local readme_pattern="$2"
     local app_pattern="$3"
 
-    if ! grep -Fq "$readme_pattern" "$README"; then
+    if ! grep -Fq -- "$readme_pattern" "$README"; then
         echo "README missing: $description ($readme_pattern)" >&2
         return 1
     fi
-    if ! grep -Fq "$app_pattern" "$APP"; then
+    if ! grep -Fq -- "$app_pattern" "$APP"; then
         echo "App missing: $description ($app_pattern)" >&2
         return 1
     fi
@@ -24,6 +24,8 @@ check_pair "URL add flow" "URLを追加..." "URLを追加"
 check_pair "song submenu" "曲を選ぶ" "曲を選ぶ"
 check_pair "source-duration default" "自動（曲の長さ）" "自動（曲の長さ）"
 check_pair "compact progress display" "進捗だけをメニューバーに表示" "compactStatusTitle"
+check_pair "minimal low-memory concept" "コンセプトはミニマル、省メモリ" "--no-video"
+check_pair "short streaming cache" "--cache-secs=10" "--cache-secs=10"
 check_pair "random current title" "ランダム再生中も" "displayTitle"
 check_pair "previous track" "前の曲" "previousTrack"
 check_pair "next track" "次の曲" "nextTrack"
