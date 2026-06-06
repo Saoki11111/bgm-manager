@@ -104,6 +104,11 @@
     songs.enabled = self.songs.count > 0;
     [menu addItem:songs];
 
+    NSMenuItem *manageSongs = [[NSMenuItem alloc] initWithTitle:@"曲を管理" action:nil keyEquivalent:@""];
+    manageSongs.submenu = [self manageSongsMenu];
+    manageSongs.enabled = self.songs.count > 0;
+    [menu addItem:manageSongs];
+
     NSMenuItem *random = [[NSMenuItem alloc] initWithTitle:@"ランダム再生" action:@selector(playRandom) keyEquivalent:@"r"];
     random.target = self;
     random.enabled = self.songs.count > 0;
@@ -208,6 +213,35 @@
         item.target = self;
         item.tag = index;
         item.state = [title isEqualToString:self.currentTitle] ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }];
+    return menu;
+}
+
+- (NSMenu *)manageSongsMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    if (self.songs.count == 0) {
+        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"曲がありません" action:nil keyEquivalent:@""];
+        empty.enabled = NO;
+        [menu addItem:empty];
+        return menu;
+    }
+    [self.songs enumerateObjectsUsingBlock:^(NSDictionary *song, NSUInteger index, BOOL *stop) {
+        NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+        NSMenu *submenu = [[NSMenu alloc] init];
+
+        NSMenuItem *rename = [[NSMenuItem alloc] initWithTitle:@"表示名を変更..." action:@selector(renameSong:) keyEquivalent:@""];
+        rename.target = self;
+        rename.tag = index;
+        [submenu addItem:rename];
+
+        NSMenuItem *delete = [[NSMenuItem alloc] initWithTitle:@"削除..." action:@selector(deleteSong:) keyEquivalent:@""];
+        delete.target = self;
+        delete.tag = index;
+        [submenu addItem:delete];
+
+        item.submenu = submenu;
         [menu addItem:item];
     }];
     return menu;
@@ -454,9 +488,74 @@
     [self ensureSongsFile];
     NSMutableArray *items = [self.songs mutableCopy] ?: [NSMutableArray array];
     [items addObject:@{@"label": label, @"url": url}];
-    NSData *data = [NSJSONSerialization dataWithJSONObject:items options:NSJSONWritingPrettyPrinted error:nil];
-    if (!data || ![data writeToFile:self.songsPath atomically:YES]) {
+    if (![self saveSongs:items]) {
         [self showMessage:@"URLを追加できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        return;
+    }
+    self.songs = items;
+    [self rebuildMenu];
+}
+
+- (BOOL)saveSongs:(NSArray<NSDictionary *> *)songs {
+    [self ensureSongsFile];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:songs options:NSJSONWritingPrettyPrinted error:nil];
+    return data && [data writeToFile:self.songsPath atomically:YES];
+}
+
+- (void)renameSong:(NSMenuItem *)sender {
+    if (sender.tag < 0 || sender.tag >= self.songs.count) return;
+    NSDictionary *song = self.songs[sender.tag];
+    NSString *currentLabel = song[@"label"] ?: song[@"url"] ?: @"";
+
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"表示名を変更";
+    alert.informativeText = @"メニューに表示する曲名を入力してください。";
+    [alert addButtonWithTitle:@"保存"];
+    [alert addButtonWithTitle:@"キャンセル"];
+
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 420, 24)];
+    input.stringValue = currentLabel;
+    alert.accessoryView = input;
+    alert.window.initialFirstResponder = input;
+
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    NSString *label = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (label.length == 0) return;
+
+    NSMutableArray *items = [self.songs mutableCopy];
+    NSMutableDictionary *updated = [song mutableCopy];
+    updated[@"label"] = label;
+    items[sender.tag] = updated;
+
+    if (![self saveSongs:items]) {
+        [self showMessage:@"表示名を変更できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        return;
+    }
+    self.songs = items;
+    [self rebuildMenu];
+}
+
+- (void)deleteSong:(NSMenuItem *)sender {
+    if (sender.tag < 0 || sender.tag >= self.songs.count) return;
+    NSDictionary *song = self.songs[sender.tag];
+    NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"曲を削除";
+    alert.informativeText = [NSString stringWithFormat:@"「%@」を曲リストから削除します。再生中の音は停止しません。", title];
+    [alert addButtonWithTitle:@"削除"];
+    [alert addButtonWithTitle:@"キャンセル"];
+    alert.alertStyle = NSAlertStyleWarning;
+
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    NSMutableArray *items = [self.songs mutableCopy];
+    [items removeObjectAtIndex:sender.tag];
+    if (![self saveSongs:items]) {
+        [self showMessage:@"曲を削除できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
         return;
     }
     self.songs = items;

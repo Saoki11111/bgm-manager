@@ -22,6 +22,9 @@ check_pair() {
 
 check_pair "URL add flow" "URLを追加..." "URLを追加"
 check_pair "song submenu" "曲を選ぶ" "曲を選ぶ"
+check_pair "song management submenu" "曲を管理" "曲を管理"
+check_pair "song rename" "表示名変更" "表示名を変更"
+check_pair "song delete" "削除" "曲を削除"
 check_pair "source-duration default" "自動（曲の長さ）" "自動（曲の長さ）"
 check_pair "compact progress display" "進捗だけをメニューバーに表示" "compactStatusTitle"
 check_pair "minimal low-memory concept" "コンセプトはミニマル、省メモリ" "--no-video"
