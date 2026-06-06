@@ -623,9 +623,7 @@
 }
 
 - (NSString *)compactStatusTitle {
-    NSString *total = [self compactTotalDurationLabel];
-    if (total.length == 0) return [NSString stringWithFormat:@"♫ %@", [self progressGlyph]];
-    return [NSString stringWithFormat:@"♫ %@ %@", [self progressGlyph], total];
+    return [NSString stringWithFormat:@"♫ %@", [self progressGlyph]];
 }
 
 - (NSString *)compactTotalDurationLabel {
