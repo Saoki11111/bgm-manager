@@ -10,6 +10,23 @@ This repository is intended to use PR-based changes only.
 - CI must pass before merging.
 - Add the `automerge` label to a PR when it should merge automatically after CI passes.
 
+## What CI Checks
+
+The CI workflow runs `./scripts/check.sh` on GitHub-hosted macOS.
+
+It checks:
+
+- shell script syntax with `bash -n`
+- README/App feature contract with `scripts/check-docs.sh`
+- macOS app build with `macos/BGMManager/build.sh`
+- ad-hoc signature validity with `codesign --verify`
+
+Run the same checks locally before pushing:
+
+```sh
+./scripts/check.sh
+```
+
 ## Required GitHub settings
 
 Set these on GitHub:
