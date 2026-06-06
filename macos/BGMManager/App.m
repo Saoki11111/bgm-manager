@@ -222,13 +222,28 @@
 - (void)playSong:(NSMenuItem *)sender {
     if (sender.tag < 0 || sender.tag >= self.songs.count) return;
     NSDictionary *song = self.songs[sender.tag];
-    NSMutableArray *arguments = [NSMutableArray arrayWithObject:song[@"url"]];
-    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-file=inf"];
-    [self startPlayback:song[@"label"] arguments:arguments];
+    if (self.durationOverrideEnabled) {
+        NSString *path = [self writePlaylistFile];
+        NSArray *arguments = @[
+            [NSString stringWithFormat:@"--playlist=%@", path],
+            [NSString stringWithFormat:@"--playlist-start=%ld", (long)sender.tag],
+            @"--loop-playlist=inf"
+        ];
+        [self startPlayback:song[@"label"] arguments:arguments playlistMode:YES];
+    } else {
+        [self startPlayback:song[@"label"] arguments:@[song[@"url"]]];
+    }
 }
 
 - (void)playRandom {
     if (self.songs.count == 0) return;
+    NSString *path = [self writePlaylistFile];
+    NSMutableArray *arguments = [@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle"] mutableCopy];
+    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-playlist=inf"];
+    [self startPlayback:@"ランダム再生" arguments:arguments playlistMode:YES];
+}
+
+- (NSString *)writePlaylistFile {
     NSString *path = [NSString stringWithFormat:@"/tmp/bgm-manager-playlist-%d.txt", getuid()];
     NSMutableArray *urls = [NSMutableArray array];
     for (NSDictionary *song in self.songs) {
@@ -236,9 +251,7 @@
     }
     NSString *contents = [[urls componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    NSMutableArray *arguments = [@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle"] mutableCopy];
-    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-playlist=inf"];
-    [self startPlayback:@"ランダム再生" arguments:arguments playlistMode:YES];
+    return path;
 }
 
 - (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments {
