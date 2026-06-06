@@ -80,7 +80,7 @@ open "/Applications/BGM Manager.app"
 曲リストは`data/bgm-list.json`です。このファイルは個人用URLを含むためGit管理外です。
 初回起動時に自動作成されます。サンプルは`data/bgm-list.example.json`です。
 
-再生は`mpv`の短いストリーミングバッファを使います。
+再生は`mpv`の軽いストリーミングバッファを使います。
 再生が止まる時の切り分け用に、アプリ版は`~/Library/Logs/BGMManager/mpv.log`へ最後の再生ログを残します。
 
 ## CLI

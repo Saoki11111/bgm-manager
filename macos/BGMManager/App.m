@@ -307,7 +307,7 @@
         @"--no-config", @"--no-video", @"--load-unsafe-playlists",
         @"--ytdl-format=ba[abr<128]/ba", @"--ytdl-raw-options=no-playlist=",
         @"--input-terminal=no", [NSString stringWithFormat:@"--input-ipc-server=%@", self.socketPath],
-        @"--msg-level=all=warn", @"--force-window=no", @"--cache=yes", @"--cache-secs=30",
+        @"--msg-level=all=warn", @"--force-window=no", @"--cache=yes", @"--cache-secs=120",
         [NSString stringWithFormat:@"--log-file=%@", self.logPath]
     ] mutableCopy];
     [args addObjectsFromArray:arguments];
