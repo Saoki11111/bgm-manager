@@ -15,6 +15,8 @@
 @property BOOL durationOverrideEnabled;
 @property NSString *currentTitle;
 @property BOOL paused;
+@property NSDate *pausedAt;
+@property NSTimeInterval accumulatedPausedDuration;
 @property NSString *socketPath;
 @property NSString *repositoryPath;
 @property NSString *songsPath;
@@ -171,7 +173,7 @@
 
 - (void)updatePlaybackMenuItems {
     if (!self.currentTitle) return;
-    NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+    NSTimeInterval elapsed = [self playbackElapsedDuration];
     NSString *position = self.hasPlaybackPosition ? [self formatTime:self.playbackPosition] : [self formatTime:elapsed];
     NSString *progress = [NSString stringWithFormat:@"曲位置: %@", position];
     if (self.mediaDuration > 0) {
@@ -326,6 +328,8 @@
         self.playlistMode = playlistMode;
         self.startedAt = [NSDate date];
         self.paused = NO;
+        self.pausedAt = nil;
+        self.accumulatedPausedDuration = 0;
         if (self.durationOverrideEnabled) [self scheduleStopTimer];
         [self rebuildMenu];
     } else {
@@ -335,8 +339,10 @@
 
 - (void)scheduleStopTimer {
     [self.stopTimer invalidate];
+    self.stopTimer = nil;
     if (!self.durationOverrideEnabled) return;
-    NSTimeInterval elapsed = self.startedAt ? [[NSDate date] timeIntervalSinceDate:self.startedAt] : 0;
+    if (self.paused) return;
+    NSTimeInterval elapsed = [self playbackElapsedDuration];
     NSTimeInterval remaining = MAX(1, self.duration - elapsed);
     self.stopTimer = [NSTimer timerWithTimeInterval:remaining target:self selector:@selector(stopAction) userInfo:nil repeats:NO];
     [[NSRunLoop mainRunLoop] addTimer:self.stopTimer forMode:NSRunLoopCommonModes];
@@ -345,7 +351,19 @@
 - (void)togglePause {
     if (!self.mpvTask.isRunning) return;
     [self sendMPVCommand:@[@"cycle", @"pause"]];
-    self.paused = !self.paused;
+    if (self.paused) {
+        if (self.pausedAt) {
+            self.accumulatedPausedDuration += [[NSDate date] timeIntervalSinceDate:self.pausedAt];
+        }
+        self.pausedAt = nil;
+        self.paused = NO;
+        if (self.durationOverrideEnabled) [self scheduleStopTimer];
+    } else {
+        self.paused = YES;
+        self.pausedAt = [NSDate date];
+        [self.stopTimer invalidate];
+        self.stopTimer = nil;
+    }
     [self rebuildMenu];
 }
 
@@ -367,6 +385,8 @@
 
 - (void)resetPlaybackTimingAfterTrackChange {
     self.startedAt = [NSDate date];
+    self.pausedAt = self.paused ? [NSDate date] : nil;
+    self.accumulatedPausedDuration = 0;
     self.playbackPosition = 0;
     self.mediaDuration = 0;
     self.hasPlaybackPosition = NO;
@@ -408,6 +428,8 @@
     self.currentTitle = nil;
     self.startedAt = nil;
     self.paused = NO;
+    self.pausedAt = nil;
+    self.accumulatedPausedDuration = 0;
     self.playbackPosition = 0;
     self.mediaDuration = 0;
     self.hasPlaybackPosition = NO;
@@ -424,6 +446,8 @@
     self.durationOverrideEnabled = YES;
     if (self.mpvTask.isRunning) {
         self.startedAt = [NSDate date];
+        self.pausedAt = self.paused ? [NSDate date] : nil;
+        self.accumulatedPausedDuration = 0;
         self.duration = selectedDuration;
         if (self.playlistMode) {
             [self sendMPVCommand:@[@"set_property", @"loop-playlist", @"inf"]];
@@ -713,9 +737,18 @@
 
 - (NSTimeInterval)progressElapsedDuration {
     if (self.durationOverrideEnabled) {
-        return [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+        return [self playbackElapsedDuration];
     }
-    return self.hasPlaybackPosition ? self.playbackPosition : [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+    return self.hasPlaybackPosition ? self.playbackPosition : [self playbackElapsedDuration];
+}
+
+- (NSTimeInterval)playbackElapsedDuration {
+    if (!self.startedAt) return 0;
+    NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt] - self.accumulatedPausedDuration;
+    if (self.pausedAt) {
+        elapsed -= [[NSDate date] timeIntervalSinceDate:self.pausedAt];
+    }
+    return MAX(0, elapsed);
 }
 
 - (NSInteger)progressPercent {
