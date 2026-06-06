@@ -18,6 +18,7 @@
 @property NSString *socketPath;
 @property NSString *repositoryPath;
 @property NSString *songsPath;
+@property NSString *logPath;
 @property NSTimeInterval playbackPosition;
 @property NSTimeInterval mediaDuration;
 @property BOOL hasPlaybackPosition;
@@ -36,6 +37,7 @@
     self.socketPath = [NSString stringWithFormat:@"/tmp/bgm-manager-%d.sock", getuid()];
     self.repositoryPath = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"RepositoryPath"];
     self.songsPath = [self.repositoryPath stringByAppendingPathComponent:@"data/bgm-list.json"];
+    self.logPath = [self defaultLogPath];
     self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
     self.statusItem.button.title = @"♫";
     [self setupMainMenu];
@@ -64,6 +66,12 @@
     if (![fileManager fileExistsAtPath:self.songsPath]) {
         [@"[]\n" writeToFile:self.songsPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
+}
+
+- (NSString *)defaultLogPath {
+    NSString *logs = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"Logs/BGMManager"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:logs withIntermediateDirectories:YES attributes:nil error:nil];
+    return [logs stringByAppendingPathComponent:@"mpv.log"];
 }
 
 - (void)setupMainMenu {
@@ -299,7 +307,8 @@
         @"--no-config", @"--no-video", @"--load-unsafe-playlists",
         @"--ytdl-format=ba[abr<128]/ba", @"--ytdl-raw-options=no-playlist=",
         @"--input-terminal=no", [NSString stringWithFormat:@"--input-ipc-server=%@", self.socketPath],
-        @"--msg-level=all=no", @"--force-window=no", @"--cache=yes", @"--cache-secs=10"
+        @"--msg-level=all=warn", @"--force-window=no", @"--cache=yes", @"--cache-secs=30",
+        [NSString stringWithFormat:@"--log-file=%@", self.logPath]
     ] mutableCopy];
     [args addObjectsFromArray:arguments];
     task.arguments = args;
