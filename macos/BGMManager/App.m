@@ -18,6 +18,7 @@
 @property NSString *socketPath;
 @property NSString *repositoryPath;
 @property NSString *songsPath;
+@property NSString *logPath;
 @property NSTimeInterval playbackPosition;
 @property NSTimeInterval mediaDuration;
 @property BOOL hasPlaybackPosition;
@@ -36,6 +37,7 @@
     self.socketPath = [NSString stringWithFormat:@"/tmp/bgm-manager-%d.sock", getuid()];
     self.repositoryPath = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"RepositoryPath"];
     self.songsPath = [self.repositoryPath stringByAppendingPathComponent:@"data/bgm-list.json"];
+    self.logPath = [self defaultLogPath];
     self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
     self.statusItem.button.title = @"♫";
     [self setupMainMenu];
@@ -64,6 +66,12 @@
     if (![fileManager fileExistsAtPath:self.songsPath]) {
         [@"[]\n" writeToFile:self.songsPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
+}
+
+- (NSString *)defaultLogPath {
+    NSString *logs = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"Logs/BGMManager"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:logs withIntermediateDirectories:YES attributes:nil error:nil];
+    return [logs stringByAppendingPathComponent:@"mpv.log"];
 }
 
 - (void)setupMainMenu {
@@ -103,6 +111,11 @@
     songs.submenu = [self songsMenu];
     songs.enabled = self.songs.count > 0;
     [menu addItem:songs];
+
+    NSMenuItem *manageSongs = [[NSMenuItem alloc] initWithTitle:@"曲を管理" action:nil keyEquivalent:@""];
+    manageSongs.submenu = [self manageSongsMenu];
+    manageSongs.enabled = self.songs.count > 0;
+    [menu addItem:manageSongs];
 
     NSMenuItem *random = [[NSMenuItem alloc] initWithTitle:@"ランダム再生" action:@selector(playRandom) keyEquivalent:@"r"];
     random.target = self;
@@ -149,14 +162,7 @@
 - (void)updateStatusTitle {
     if (self.currentTitle) {
         [self refreshPlaybackProgress];
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
-        if (self.durationOverrideEnabled) {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:elapsed], [self formatTime:self.duration]];
-        } else if (self.mediaDuration > 0) {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ / %@", [self formatTime:self.playbackPosition], [self formatTime:self.mediaDuration]];
-        } else {
-            self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@", [self formatTime:elapsed]];
-        }
+        self.statusItem.button.title = [self compactStatusTitle];
         [self updatePlaybackMenuItems];
     } else {
         self.statusItem.button.title = @"♫";
@@ -174,9 +180,10 @@
     self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", [self displayTitle]];
     if (self.durationOverrideEnabled) {
         NSTimeInterval remaining = MAX(0, self.duration - elapsed);
-        self.remainingItem.title = [NSString stringWithFormat:@"タイマー: %@ / %@  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], [self formatTime:remaining]];
+        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], (long)[self progressPercent], [self formatTime:remaining]];
     } else {
-        self.remainingItem.title = @"再生時間: 曲の長さ";
+        NSString *total = self.mediaDuration > 0 ? [self formatTime:self.mediaDuration] : @"--:--";
+        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%", position, total, (long)[self progressPercent]];
     }
     self.progressItem.title = progress;
 }
@@ -214,6 +221,35 @@
         item.target = self;
         item.tag = index;
         item.state = [title isEqualToString:self.currentTitle] ? NSControlStateValueOn : NSControlStateValueOff;
+        [menu addItem:item];
+    }];
+    return menu;
+}
+
+- (NSMenu *)manageSongsMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    if (self.songs.count == 0) {
+        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"曲がありません" action:nil keyEquivalent:@""];
+        empty.enabled = NO;
+        [menu addItem:empty];
+        return menu;
+    }
+    [self.songs enumerateObjectsUsingBlock:^(NSDictionary *song, NSUInteger index, BOOL *stop) {
+        NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+        NSMenu *submenu = [[NSMenu alloc] init];
+
+        NSMenuItem *rename = [[NSMenuItem alloc] initWithTitle:@"表示名を変更..." action:@selector(renameSong:) keyEquivalent:@""];
+        rename.target = self;
+        rename.tag = index;
+        [submenu addItem:rename];
+
+        NSMenuItem *delete = [[NSMenuItem alloc] initWithTitle:@"削除..." action:@selector(deleteSong:) keyEquivalent:@""];
+        delete.target = self;
+        delete.tag = index;
+        [submenu addItem:delete];
+
+        item.submenu = submenu;
         [menu addItem:item];
     }];
     return menu;
@@ -271,7 +307,8 @@
         @"--no-config", @"--no-video", @"--load-unsafe-playlists",
         @"--ytdl-format=ba[abr<128]/ba", @"--ytdl-raw-options=no-playlist=",
         @"--input-terminal=no", [NSString stringWithFormat:@"--input-ipc-server=%@", self.socketPath],
-        @"--msg-level=all=no", @"--force-window=no", @"--cache=yes", @"--cache-secs=10"
+        @"--msg-level=all=warn", @"--force-window=no", @"--cache=yes", @"--cache-secs=30",
+        [NSString stringWithFormat:@"--log-file=%@", self.logPath]
     ] mutableCopy];
     [args addObjectsFromArray:arguments];
     task.arguments = args;
@@ -460,9 +497,74 @@
     [self ensureSongsFile];
     NSMutableArray *items = [self.songs mutableCopy] ?: [NSMutableArray array];
     [items addObject:@{@"label": label, @"url": url}];
-    NSData *data = [NSJSONSerialization dataWithJSONObject:items options:NSJSONWritingPrettyPrinted error:nil];
-    if (!data || ![data writeToFile:self.songsPath atomically:YES]) {
+    if (![self saveSongs:items]) {
         [self showMessage:@"URLを追加できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        return;
+    }
+    self.songs = items;
+    [self rebuildMenu];
+}
+
+- (BOOL)saveSongs:(NSArray<NSDictionary *> *)songs {
+    [self ensureSongsFile];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:songs options:NSJSONWritingPrettyPrinted error:nil];
+    return data && [data writeToFile:self.songsPath atomically:YES];
+}
+
+- (void)renameSong:(NSMenuItem *)sender {
+    if (sender.tag < 0 || sender.tag >= self.songs.count) return;
+    NSDictionary *song = self.songs[sender.tag];
+    NSString *currentLabel = song[@"label"] ?: song[@"url"] ?: @"";
+
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"表示名を変更";
+    alert.informativeText = @"メニューに表示する曲名を入力してください。";
+    [alert addButtonWithTitle:@"保存"];
+    [alert addButtonWithTitle:@"キャンセル"];
+
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 420, 24)];
+    input.stringValue = currentLabel;
+    alert.accessoryView = input;
+    alert.window.initialFirstResponder = input;
+
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    NSString *label = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (label.length == 0) return;
+
+    NSMutableArray *items = [self.songs mutableCopy];
+    NSMutableDictionary *updated = [song mutableCopy];
+    updated[@"label"] = label;
+    items[sender.tag] = updated;
+
+    if (![self saveSongs:items]) {
+        [self showMessage:@"表示名を変更できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        return;
+    }
+    self.songs = items;
+    [self rebuildMenu];
+}
+
+- (void)deleteSong:(NSMenuItem *)sender {
+    if (sender.tag < 0 || sender.tag >= self.songs.count) return;
+    NSDictionary *song = self.songs[sender.tag];
+    NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"曲を削除";
+    alert.informativeText = [NSString stringWithFormat:@"「%@」を曲リストから削除します。再生中の音は停止しません。", title];
+    [alert addButtonWithTitle:@"削除"];
+    [alert addButtonWithTitle:@"キャンセル"];
+    alert.alertStyle = NSAlertStyleWarning;
+
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    NSMutableArray *items = [self.songs mutableCopy];
+    [items removeObjectAtIndex:sender.tag];
+    if (![self saveSongs:items]) {
+        [self showMessage:@"曲を削除できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
         return;
     }
     self.songs = items;
@@ -599,6 +701,48 @@
 - (NSString *)durationMenuTitle {
     if (!self.durationOverrideEnabled) return @"自動（曲の長さ）";
     return [self formatDurationLabel:self.duration];
+}
+
+- (NSTimeInterval)progressTotalDuration {
+    if (self.durationOverrideEnabled) return self.duration;
+    return self.mediaDuration > 0 ? self.mediaDuration : 0;
+}
+
+- (NSTimeInterval)progressElapsedDuration {
+    if (self.durationOverrideEnabled) {
+        return [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+    }
+    return self.hasPlaybackPosition ? self.playbackPosition : [[NSDate date] timeIntervalSinceDate:self.startedAt ?: [NSDate date]];
+}
+
+- (NSInteger)progressPercent {
+    NSTimeInterval total = [self progressTotalDuration];
+    if (total <= 0) return 0;
+    NSTimeInterval elapsed = MAX(0, MIN([self progressElapsedDuration], total));
+    return (NSInteger)llround((elapsed / total) * 100.0);
+}
+
+- (NSString *)progressGlyph {
+    NSInteger percent = [self progressPercent];
+    if (percent < 25) return @"◔";
+    if (percent < 50) return @"◑";
+    if (percent < 75) return @"◕";
+    return @"●";
+}
+
+- (NSString *)compactStatusTitle {
+    return [NSString stringWithFormat:@"♫ %@", [self progressGlyph]];
+}
+
+- (NSString *)compactTotalDurationLabel {
+    NSTimeInterval total = [self progressTotalDuration];
+    if (total <= 0) return @"";
+    NSInteger seconds = MAX(0, (NSInteger)llround(total));
+    NSInteger hours = seconds / 3600;
+    NSInteger minutes = (seconds % 3600) / 60;
+    if (hours > 0 && minutes > 0) return [NSString stringWithFormat:@"%ldh%ldm", (long)hours, (long)minutes];
+    if (hours > 0) return [NSString stringWithFormat:@"%ldh", (long)hours];
+    return [NSString stringWithFormat:@"%ldm", (long)MAX(1, minutes)];
 }
 
 @end

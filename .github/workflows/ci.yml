@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  build:
+  check:
     name: Build macOS app
     runs-on: macos-latest
 
@@ -15,8 +15,5 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
-        run: ./macos/BGMManager/build.sh
-
-      - name: Verify signature
-        run: codesign --verify --deep --strict "dist/BGM Manager.app"
+      - name: Run checks
+        run: ./scripts/check.sh

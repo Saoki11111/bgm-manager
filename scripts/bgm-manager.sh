@@ -356,7 +356,8 @@ play() {
         --term-osd-bar=no \
         --force-window=no \
         --cache=yes \
-        --cache-secs=10 \
+        --cache-secs=30 \
+        --log-file="$work_dir/mpv.log" \
         >/dev/null 2>&1 &
     mpv_pid=$!
 

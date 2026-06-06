@@ -35,8 +35,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-    <key>LSUIElement</key>
-    <true/>
     <key>RepositoryPath</key>
     <string>$REPO_DIR</string>
 </dict>
