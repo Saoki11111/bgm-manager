@@ -29,6 +29,7 @@ brew install jq mpv yt-dlp
 ```
 
 生成された`dist/BGM Manager.app`を`/Applications`へコピーして起動します。
+Dockに置いておく場合は、起動後にDock上のアイコンを右クリックして`オプション` > `Dockに追加`を選びます。
 
 ### 使い方
 
