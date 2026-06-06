@@ -10,6 +10,46 @@ This repository is intended to use PR-based changes only.
 - CI must pass before merging.
 - Add the `automerge` label to a PR when it should merge automatically after CI passes.
 
+## Local Branch Flow
+
+For normal work:
+
+```sh
+git switch -c feature/name
+# edit files
+./scripts/check.sh
+git add ...
+git commit -m "..."
+git push -u origin feature/name
+gh pr create
+```
+
+Do not merge locally. Ask the AI or run the explicit merge flow only when the PR should be merged.
+
+## Merge Flow
+
+When a PR should be merged:
+
+1. Confirm the PR number and CI status.
+2. Squash merge the PR.
+3. Switch local checkout to `main`.
+4. Pull `origin/main`.
+5. Delete the merged local branch.
+6. Prune remote tracking branches.
+7. Confirm `git status --short --branch` and `git branch -a`.
+
+This repository includes a helper:
+
+```sh
+./scripts/merge-pr.sh <pr-number>
+```
+
+Example:
+
+```sh
+./scripts/merge-pr.sh 3
+```
+
 ## What CI Checks
 
 The CI workflow runs `./scripts/check.sh` on GitHub-hosted macOS.
