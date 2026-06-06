@@ -149,7 +149,7 @@
 - (void)updateStatusTitle {
     if (self.currentTitle) {
         [self refreshPlaybackProgress];
-        self.statusItem.button.title = [NSString stringWithFormat:@"♫ %@ %@", [self progressGlyph], [self compactTotalDurationLabel]];
+        self.statusItem.button.title = [self compactStatusTitle];
         [self updatePlaybackMenuItems];
     } else {
         self.statusItem.button.title = @"♫";
@@ -620,6 +620,12 @@
     if (percent < 50) return @"◑";
     if (percent < 75) return @"◕";
     return @"●";
+}
+
+- (NSString *)compactStatusTitle {
+    NSString *total = [self compactTotalDurationLabel];
+    if (total.length == 0) return [NSString stringWithFormat:@"♫ %@", [self progressGlyph]];
+    return [NSString stringWithFormat:@"♫ %@ %@", [self progressGlyph], total];
 }
 
 - (NSString *)compactTotalDurationLabel {
