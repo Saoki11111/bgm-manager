@@ -259,13 +259,11 @@
     if (sender.tag < 0 || sender.tag >= self.songs.count) return;
     NSDictionary *song = self.songs[sender.tag];
     if (self.durationOverrideEnabled) {
-        NSString *path = [self writePlaylistFile];
         NSArray *arguments = @[
-            [NSString stringWithFormat:@"--playlist=%@", path],
-            [NSString stringWithFormat:@"--playlist-start=%ld", (long)sender.tag],
-            @"--loop-playlist=inf"
+            song[@"url"],
+            @"--loop-file=inf"
         ];
-        [self startPlayback:song[@"label"] arguments:arguments playlistMode:YES];
+        [self startPlayback:song[@"label"] arguments:arguments playlistMode:NO];
     } else {
         [self startPlayback:song[@"label"] arguments:@[song[@"url"]]];
     }
@@ -427,6 +425,11 @@
     if (self.mpvTask.isRunning) {
         self.startedAt = [NSDate date];
         self.duration = selectedDuration;
+        if (self.playlistMode) {
+            [self sendMPVCommand:@[@"set_property", @"loop-playlist", @"inf"]];
+        } else {
+            [self sendMPVCommand:@[@"set_property", @"loop-file", @"inf"]];
+        }
         [self scheduleStopTimer];
     } else {
         self.duration = selectedDuration;
