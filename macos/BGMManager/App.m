@@ -28,14 +28,13 @@
 @property NSMenuItem *remainingItem;
 @property NSMenuItem *progressItem;
 @property NSString *currentPlaybackPath;
-@property BOOL playlistMode;
 @end
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.duration = 0;
-    self.durationOverrideEnabled = NO;
+    self.duration = 10800;
+    self.durationOverrideEnabled = YES;
     self.socketPath = [NSString stringWithFormat:@"/tmp/bgm-manager-%d.sock", getuid()];
     self.repositoryPath = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"RepositoryPath"];
     self.songsPath = [self.repositoryPath stringByAppendingPathComponent:@"data/bgm-list.json"];
@@ -109,6 +108,11 @@
         [menu addItem:[NSMenuItem separatorItem]];
     }
 
+    NSMenuItem *omakase = [[NSMenuItem alloc] initWithTitle:@"おまかせループ" action:@selector(playOmakaseLoop) keyEquivalent:@"r"];
+    omakase.target = self;
+    omakase.enabled = self.songs.count > 0;
+    [menu addItem:omakase];
+
     NSMenuItem *songs = [[NSMenuItem alloc] initWithTitle:@"曲を選ぶ" action:nil keyEquivalent:@""];
     songs.submenu = [self songsMenu];
     songs.enabled = self.songs.count > 0;
@@ -119,11 +123,6 @@
     manageSongs.enabled = self.songs.count > 0;
     [menu addItem:manageSongs];
 
-    NSMenuItem *random = [[NSMenuItem alloc] initWithTitle:@"ランダム再生" action:@selector(playRandom) keyEquivalent:@"r"];
-    random.target = self;
-    random.enabled = self.songs.count > 0;
-    [menu addItem:random];
-
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *duration = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"再生時間: %@", [self durationMenuTitle]] action:nil keyEquivalent:@""];
     duration.submenu = [self durationMenu];
@@ -133,16 +132,6 @@
     pause.target = self;
     pause.enabled = self.mpvTask.isRunning;
     [menu addItem:pause];
-
-    NSMenuItem *previous = [[NSMenuItem alloc] initWithTitle:@"前の曲" action:@selector(previousTrack) keyEquivalent:@"["];
-    previous.target = self;
-    previous.enabled = self.mpvTask.isRunning && self.playlistMode;
-    [menu addItem:previous];
-
-    NSMenuItem *next = [[NSMenuItem alloc] initWithTitle:@"次の曲" action:@selector(nextTrack) keyEquivalent:@"]"];
-    next.target = self;
-    next.enabled = self.mpvTask.isRunning && self.playlistMode;
-    [menu addItem:next];
 
     NSMenuItem *stop = [[NSMenuItem alloc] initWithTitle:@"停止（再生を終了）" action:@selector(stopAction) keyEquivalent:@"."];
     stop.target = self;
@@ -198,7 +187,7 @@
     [menu addItem:autoDuration];
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSArray *values = @[@[@"30分", @1800], @[@"1時間", @3600], @[@"2時間", @7200], @[@"3時間", @10800]];
+    NSArray *values = @[@[@"1時間", @3600], @[@"2時間", @7200], @[@"3時間", @10800]];
     for (NSArray *value in values) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:value[0] action:@selector(chooseDuration:) keyEquivalent:@""];
         item.target = self;
@@ -265,36 +254,20 @@
             song[@"url"],
             @"--loop-file=inf"
         ];
-        [self startPlayback:song[@"label"] arguments:arguments playlistMode:NO];
+        [self startPlayback:song[@"label"] arguments:arguments];
     } else {
         [self startPlayback:song[@"label"] arguments:@[song[@"url"]]];
     }
 }
 
-- (void)playRandom {
+- (void)playOmakaseLoop {
     if (self.songs.count == 0) return;
-    NSString *path = [self writePlaylistFile];
-    NSMutableArray *arguments = [@[[NSString stringWithFormat:@"--playlist=%@", path], @"--shuffle"] mutableCopy];
-    if (self.durationOverrideEnabled) [arguments addObject:@"--loop-playlist=inf"];
-    [self startPlayback:@"ランダム再生" arguments:arguments playlistMode:YES];
-}
-
-- (NSString *)writePlaylistFile {
-    NSString *path = [NSString stringWithFormat:@"/tmp/bgm-manager-playlist-%d.txt", getuid()];
-    NSMutableArray *urls = [NSMutableArray array];
-    for (NSDictionary *song in self.songs) {
-        if (song[@"url"]) [urls addObject:song[@"url"]];
-    }
-    NSString *contents = [[urls componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
-    [contents writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    return path;
+    NSUInteger index = arc4random_uniform((uint32_t)self.songs.count);
+    NSDictionary *song = self.songs[index];
+    [self startPlayback:song[@"label"] arguments:@[song[@"url"], @"--loop-file=inf"]];
 }
 
 - (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments {
-    [self startPlayback:title arguments:arguments playlistMode:NO];
-}
-
-- (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments playlistMode:(BOOL)playlistMode {
     [self stopPlayback];
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
 
@@ -325,7 +298,6 @@
     if ([task launchAndReturnError:&error]) {
         self.mpvTask = task;
         self.currentTitle = title;
-        self.playlistMode = playlistMode;
         self.startedAt = [NSDate date];
         self.paused = NO;
         self.pausedAt = nil;
@@ -371,32 +343,6 @@
     [self stopPlayback];
 }
 
-- (void)nextTrack {
-    if (!self.mpvTask.isRunning || !self.playlistMode) return;
-    [self sendMPVCommand:@[@"playlist-next", @"force"]];
-    [self resetPlaybackTimingAfterTrackChange];
-}
-
-- (void)previousTrack {
-    if (!self.mpvTask.isRunning || !self.playlistMode) return;
-    [self sendMPVCommand:@[@"playlist-prev", @"force"]];
-    [self resetPlaybackTimingAfterTrackChange];
-}
-
-- (void)resetPlaybackTimingAfterTrackChange {
-    self.startedAt = [NSDate date];
-    self.pausedAt = self.paused ? [NSDate date] : nil;
-    self.accumulatedPausedDuration = 0;
-    self.playbackPosition = 0;
-    self.mediaDuration = 0;
-    self.hasPlaybackPosition = NO;
-    self.currentPlaybackPath = nil;
-    if (self.durationOverrideEnabled) [self scheduleStopTimer];
-    [self refreshPlaybackProgress];
-    [self updateStatusTitle];
-    [self updatePlaybackMenuItems];
-}
-
 - (void)stopPlayback {
     [self.stopTimer invalidate];
     self.stopTimer = nil;
@@ -434,7 +380,6 @@
     self.mediaDuration = 0;
     self.hasPlaybackPosition = NO;
     self.currentPlaybackPath = nil;
-    self.playlistMode = NO;
     [self.stopTimer invalidate];
     self.stopTimer = nil;
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
@@ -449,11 +394,7 @@
         self.pausedAt = self.paused ? [NSDate date] : nil;
         self.accumulatedPausedDuration = 0;
         self.duration = selectedDuration;
-        if (self.playlistMode) {
-            [self sendMPVCommand:@[@"set_property", @"loop-playlist", @"inf"]];
-        } else {
-            [self sendMPVCommand:@[@"set_property", @"loop-file", @"inf"]];
-        }
+        [self sendMPVCommand:@[@"set_property", @"loop-file", @"inf"]];
         [self scheduleStopTimer];
     } else {
         self.duration = selectedDuration;
@@ -605,7 +546,6 @@
     self.stopTimer = nil;
     if (self.mpvTask.isRunning) {
         [self sendMPVCommand:@[@"set_property", @"loop-file", @"no"]];
-        [self sendMPVCommand:@[@"set_property", @"loop-playlist", @"no"]];
     }
     [self rebuildMenu];
 }
