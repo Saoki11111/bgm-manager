@@ -98,6 +98,12 @@
     NSApp.mainMenu = mainMenu;
 }
 
+- (NSMenuItem *)menuItemWithTitle:(NSString *)title symbol:(NSString *)symbol action:(SEL)action {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:@""];
+    item.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:title];
+    return item;
+}
+
 - (void)rebuildMenu {
     NSMenu *menu = [[NSMenu alloc] init];
     self.nowPlayingItem = nil;
@@ -116,41 +122,43 @@
         [menu addItem:[NSMenuItem separatorItem]];
     }
 
-    NSMenuItem *omakase = [[NSMenuItem alloc] initWithTitle:@"おまかせループ" action:@selector(playOmakaseLoop) keyEquivalent:@"r"];
+    NSMenuItem *omakase = [self menuItemWithTitle:@"おまかせ" symbol:@"shuffle" action:@selector(playOmakaseLoop)];
     omakase.target = self;
     omakase.enabled = self.songs.count > 0;
     [menu addItem:omakase];
 
-    NSMenuItem *songs = [[NSMenuItem alloc] initWithTitle:@"曲を選ぶ" action:nil keyEquivalent:@""];
+    NSMenuItem *songs = [self menuItemWithTitle:@"曲を選ぶ" symbol:@"music.note.list" action:nil];
     songs.submenu = [self songsMenu];
     songs.enabled = self.songs.count > 0;
     [menu addItem:songs];
 
-    NSMenuItem *manageSongs = [[NSMenuItem alloc] initWithTitle:@"曲を管理" action:nil keyEquivalent:@""];
+    NSMenuItem *manageSongs = [self menuItemWithTitle:@"曲を管理" symbol:@"slider.horizontal.3" action:nil];
     manageSongs.submenu = [self manageSongsMenu];
     manageSongs.enabled = self.songs.count > 0;
     [menu addItem:manageSongs];
 
     [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *duration = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"再生時間: %@", [self durationMenuTitle]] action:nil keyEquivalent:@""];
+    NSMenuItem *duration = [self menuItemWithTitle:[self durationMenuTitle] symbol:@"timer" action:nil];
     duration.submenu = [self durationMenu];
     [menu addItem:duration];
 
-    NSMenuItem *pause = [[NSMenuItem alloc] initWithTitle:self.paused ? @"再開（一時停止から戻る）" : @"一時停止（位置を残す）" action:@selector(togglePause) keyEquivalent:@"p"];
+    NSMenuItem *pause = [self menuItemWithTitle:self.paused ? @"再開" : @"一時停止"
+                                         symbol:self.paused ? @"play.fill" : @"pause.fill"
+                                         action:@selector(togglePause)];
     pause.target = self;
     pause.enabled = self.mpvTask.isRunning;
     [menu addItem:pause];
 
-    NSMenuItem *stop = [[NSMenuItem alloc] initWithTitle:@"停止（再生を終了）" action:@selector(stopAction) keyEquivalent:@"."];
+    NSMenuItem *stop = [self menuItemWithTitle:@"停止" symbol:@"stop.fill" action:@selector(stopAction)];
     stop.target = self;
     stop.enabled = self.mpvTask.isRunning;
     [menu addItem:stop];
 
     [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *add = [[NSMenuItem alloc] initWithTitle:@"URLを追加..." action:@selector(addURL) keyEquivalent:@"a"];
+    NSMenuItem *add = [self menuItemWithTitle:@"URL追加..." symbol:@"plus" action:@selector(addURL)];
     add.target = self;
     [menu addItem:add];
-    NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"BGM Managerを終了" action:@selector(quit) keyEquivalent:@"q"];
+    NSMenuItem *quit = [self menuItemWithTitle:@"終了" symbol:@"power" action:@selector(quit)];
     quit.target = self;
     [menu addItem:quit];
 

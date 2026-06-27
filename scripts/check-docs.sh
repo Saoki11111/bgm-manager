@@ -20,7 +20,7 @@ check_pair() {
     fi
 }
 
-check_pair "URL add flow" "URLを追加..." "URLを追加"
+check_pair "URL add flow" "URL追加..." "URL追加"
 check_pair "song submenu" "曲を選ぶ" "曲を選ぶ"
 check_pair "song management submenu" "曲を管理" "曲を管理"
 check_pair "song rename" "表示名変更" "表示名を変更"
@@ -30,9 +30,9 @@ check_pair "compact progress display" "進捗だけをメニューバーに表�
 check_pair "minimal low-memory concept" "コンセプトはミニマル、省メモリ" "--no-video"
 check_pair "streaming cache" "軽いストリーミングバッファ" "--cache-secs=120"
 check_pair "mpv playback log" "mpv.log" "--log-file"
-check_pair "focus loop concept" "集中用の1曲ループ" "おまかせループ"
+check_pair "focus loop concept" "集中用の1曲ループ" 'menuItemWithTitle:@"おまかせ"'
 check_pair "omakase loop" "おまかせループ" "playOmakaseLoop"
-check_pair "pause semantics" "一時停止は同じ曲の同じ位置から戻る" "一時停止（位置を残す）"
-check_pair "stop semantics" "停止は再生を終了" "停止（再生を終了）"
+check_pair "pause semantics" "一時停止は同じ曲の同じ位置から戻る" '@"一時停止"'
+check_pair "stop semantics" "停止は再生を終了" 'menuItemWithTitle:@"停止"'
 
 echo "README contract checks passed."
