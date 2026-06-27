@@ -75,6 +75,14 @@
     return [logs stringByAppendingPathComponent:@"mpv.log"];
 }
 
+- (void)removeOversizedPlaybackLog {
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:self.logPath error:nil];
+    unsigned long long size = [attributes fileSize];
+    if (size > 5 * 1024 * 1024) {
+        [[NSFileManager defaultManager] removeItemAtPath:self.logPath error:nil];
+    }
+}
+
 - (void)setupMainMenu {
     NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
     NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
@@ -270,6 +278,7 @@
 - (void)startPlayback:(NSString *)title arguments:(NSArray<NSString *> *)arguments {
     [self stopPlayback];
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
+    [self removeOversizedPlaybackLog];
 
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = [NSURL fileURLWithPath:@"/opt/homebrew/bin/mpv"];
@@ -279,6 +288,7 @@
     NSMutableArray *args = [@[
         @"--no-config", @"--no-video", @"--load-unsafe-playlists",
         @"--ytdl-format=ba[abr<128]/ba", @"--ytdl-raw-options=no-playlist=",
+        @"--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=5,reconnect_max_retries=3,reconnect_delay_total_max=15",
         @"--input-terminal=no", [NSString stringWithFormat:@"--input-ipc-server=%@", self.socketPath],
         @"--msg-level=all=warn", @"--force-window=no", @"--cache=yes", @"--cache-secs=120",
         [NSString stringWithFormat:@"--log-file=%@", self.logPath]
