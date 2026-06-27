@@ -20,19 +20,19 @@ check_pair() {
     fi
 }
 
-check_pair "URL add flow" "URL追加..." "URL追加"
-check_pair "song submenu" "曲を選ぶ" "曲を選ぶ"
-check_pair "song management submenu" "曲を管理" "曲を管理"
-check_pair "song rename" "表示名変更" "表示名を変更"
-check_pair "song delete" "削除" "曲を削除"
+check_pair "URL add flow" "Add URL..." "Add URL"
+check_pair "song submenu" '`Songs`' 'menuItemWithTitle:@"Songs"'
+check_pair "song management submenu" '`Edit Songs`' 'menuItemWithTitle:@"Edit Songs"'
+check_pair "song rename" '`Rename...`' 'initWithTitle:@"Rename..."'
+check_pair "song delete" '`Delete...`' 'initWithTitle:@"Delete..."'
 check_pair "three-hour default" "デフォルトでは、3時間タイマー" "self.duration = 10800"
 check_pair "compact progress display" "進捗だけをメニューバーに表示" "compactStatusTitle"
 check_pair "minimal low-memory concept" "コンセプトはミニマル、省メモリ" "--no-video"
 check_pair "streaming cache" "軽いストリーミングバッファ" "--cache-secs=120"
 check_pair "mpv playback log" "mpv.log" "--log-file"
-check_pair "focus loop concept" "集中用の1曲ループ" 'menuItemWithTitle:@"おまかせ"'
-check_pair "omakase loop" "おまかせループ" "playOmakaseLoop"
-check_pair "pause semantics" "一時停止は同じ曲の同じ位置から戻る" '@"一時停止"'
-check_pair "stop semantics" "停止は再生を終了" 'menuItemWithTitle:@"停止"'
+check_pair "focus loop concept" "集中用の1曲ループ" 'menuItemWithTitle:@"Shuffle"'
+check_pair "shuffle loop" '`Shuffle`' "playOmakaseLoop"
+check_pair "pause semantics" '`Pause`は同じ曲の同じ位置から戻る' '@"Pause"'
+check_pair "stop semantics" '`Stop`は再生を終了' 'menuItemWithTitle:@"Stop"'
 
 echo "README contract checks passed."

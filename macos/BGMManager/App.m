@@ -122,17 +122,17 @@
         [menu addItem:[NSMenuItem separatorItem]];
     }
 
-    NSMenuItem *omakase = [self menuItemWithTitle:@"おまかせ" symbol:@"shuffle" action:@selector(playOmakaseLoop)];
+    NSMenuItem *omakase = [self menuItemWithTitle:@"Shuffle" symbol:@"shuffle" action:@selector(playOmakaseLoop)];
     omakase.target = self;
     omakase.enabled = self.songs.count > 0;
     [menu addItem:omakase];
 
-    NSMenuItem *songs = [self menuItemWithTitle:@"曲を選ぶ" symbol:@"music.note.list" action:nil];
+    NSMenuItem *songs = [self menuItemWithTitle:@"Songs" symbol:@"music.note.list" action:nil];
     songs.submenu = [self songsMenu];
     songs.enabled = self.songs.count > 0;
     [menu addItem:songs];
 
-    NSMenuItem *manageSongs = [self menuItemWithTitle:@"曲を管理" symbol:@"slider.horizontal.3" action:nil];
+    NSMenuItem *manageSongs = [self menuItemWithTitle:@"Edit Songs" symbol:@"slider.horizontal.3" action:nil];
     manageSongs.submenu = [self manageSongsMenu];
     manageSongs.enabled = self.songs.count > 0;
     [menu addItem:manageSongs];
@@ -142,23 +142,23 @@
     duration.submenu = [self durationMenu];
     [menu addItem:duration];
 
-    NSMenuItem *pause = [self menuItemWithTitle:self.paused ? @"再開" : @"一時停止"
+    NSMenuItem *pause = [self menuItemWithTitle:self.paused ? @"Play" : @"Pause"
                                          symbol:self.paused ? @"play.fill" : @"pause.fill"
                                          action:@selector(togglePause)];
     pause.target = self;
     pause.enabled = self.mpvTask.isRunning;
     [menu addItem:pause];
 
-    NSMenuItem *stop = [self menuItemWithTitle:@"停止" symbol:@"stop.fill" action:@selector(stopAction)];
+    NSMenuItem *stop = [self menuItemWithTitle:@"Stop" symbol:@"stop.fill" action:@selector(stopAction)];
     stop.target = self;
     stop.enabled = self.mpvTask.isRunning;
     [menu addItem:stop];
 
     [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *add = [self menuItemWithTitle:@"URL追加..." symbol:@"plus" action:@selector(addURL)];
+    NSMenuItem *add = [self menuItemWithTitle:@"Add URL..." symbol:@"plus" action:@selector(addURL)];
     add.target = self;
     [menu addItem:add];
-    NSMenuItem *quit = [self menuItemWithTitle:@"終了" symbol:@"power" action:@selector(quit)];
+    NSMenuItem *quit = [self menuItemWithTitle:@"Quit" symbol:@"power" action:@selector(quit)];
     quit.target = self;
     [menu addItem:quit];
 
@@ -180,30 +180,30 @@
     if (!self.currentTitle) return;
     NSTimeInterval elapsed = [self playbackElapsedDuration];
     NSString *position = self.hasPlaybackPosition ? [self formatTime:self.playbackPosition] : [self formatTime:elapsed];
-    NSString *progress = [NSString stringWithFormat:@"曲位置: %@", position];
+    NSString *progress = [NSString stringWithFormat:@"Track: %@", position];
     if (self.mediaDuration > 0) {
         progress = [progress stringByAppendingFormat:@" / %@", [self formatTime:self.mediaDuration]];
     }
-    self.nowPlayingItem.title = [NSString stringWithFormat:@"再生中: %@", [self displayTitle]];
+    self.nowPlayingItem.title = [NSString stringWithFormat:@"Playing: %@", [self displayTitle]];
     if (self.durationOverrideEnabled) {
         NSTimeInterval remaining = MAX(0, self.duration - elapsed);
-        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%  残り %@", [self formatTime:elapsed], [self formatTime:self.duration], (long)[self progressPercent], [self formatTime:remaining]];
+        self.remainingItem.title = [NSString stringWithFormat:@"Time: %@ / %@  %ld%%  Left: %@", [self formatTime:elapsed], [self formatTime:self.duration], (long)[self progressPercent], [self formatTime:remaining]];
     } else {
         NSString *total = self.mediaDuration > 0 ? [self formatTime:self.mediaDuration] : @"--:--";
-        self.remainingItem.title = [NSString stringWithFormat:@"進捗: %@ / %@  %ld%%", position, total, (long)[self progressPercent]];
+        self.remainingItem.title = [NSString stringWithFormat:@"Time: %@ / %@  %ld%%", position, total, (long)[self progressPercent]];
     }
     self.progressItem.title = progress;
 }
 
 - (NSMenu *)durationMenu {
     NSMenu *menu = [[NSMenu alloc] init];
-    NSMenuItem *autoDuration = [[NSMenuItem alloc] initWithTitle:@"自動（曲の長さ）" action:@selector(clearDurationOverride) keyEquivalent:@""];
+    NSMenuItem *autoDuration = [[NSMenuItem alloc] initWithTitle:@"Auto" action:@selector(clearDurationOverride) keyEquivalent:@""];
     autoDuration.target = self;
     autoDuration.state = self.durationOverrideEnabled ? NSControlStateValueOff : NSControlStateValueOn;
     [menu addItem:autoDuration];
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSArray *values = @[@[@"1時間", @3600], @[@"2時間", @7200], @[@"3時間", @10800]];
+    NSArray *values = @[@[@"1 hour", @3600], @[@"2 hours", @7200], @[@"3 hours", @10800]];
     for (NSArray *value in values) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:value[0] action:@selector(chooseDuration:) keyEquivalent:@""];
         item.target = self;
@@ -217,13 +217,13 @@
 - (NSMenu *)songsMenu {
     NSMenu *menu = [[NSMenu alloc] init];
     if (self.songs.count == 0) {
-        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"曲がありません" action:nil keyEquivalent:@""];
+        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"No songs" action:nil keyEquivalent:@""];
         empty.enabled = NO;
         [menu addItem:empty];
         return menu;
     }
     [self.songs enumerateObjectsUsingBlock:^(NSDictionary *song, NSUInteger index, BOOL *stop) {
-        NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+        NSString *title = song[@"label"] ?: song[@"url"] ?: @"Untitled";
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:@selector(playSong:) keyEquivalent:@""];
         item.target = self;
         item.tag = index;
@@ -236,22 +236,22 @@
 - (NSMenu *)manageSongsMenu {
     NSMenu *menu = [[NSMenu alloc] init];
     if (self.songs.count == 0) {
-        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"曲がありません" action:nil keyEquivalent:@""];
+        NSMenuItem *empty = [[NSMenuItem alloc] initWithTitle:@"No songs" action:nil keyEquivalent:@""];
         empty.enabled = NO;
         [menu addItem:empty];
         return menu;
     }
     [self.songs enumerateObjectsUsingBlock:^(NSDictionary *song, NSUInteger index, BOOL *stop) {
-        NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+        NSString *title = song[@"label"] ?: song[@"url"] ?: @"Untitled";
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
         NSMenu *submenu = [[NSMenu alloc] init];
 
-        NSMenuItem *rename = [[NSMenuItem alloc] initWithTitle:@"表示名を変更..." action:@selector(renameSong:) keyEquivalent:@""];
+        NSMenuItem *rename = [[NSMenuItem alloc] initWithTitle:@"Rename..." action:@selector(renameSong:) keyEquivalent:@""];
         rename.target = self;
         rename.tag = index;
         [submenu addItem:rename];
 
-        NSMenuItem *delete = [[NSMenuItem alloc] initWithTitle:@"削除..." action:@selector(deleteSong:) keyEquivalent:@""];
+        NSMenuItem *delete = [[NSMenuItem alloc] initWithTitle:@"Delete..." action:@selector(deleteSong:) keyEquivalent:@""];
         delete.target = self;
         delete.tag = index;
         [submenu addItem:delete];
@@ -424,10 +424,10 @@
     [NSApp activateIgnoringOtherApps:YES];
 
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"URLを追加";
-    alert.informativeText = @"YouTube URLを入力してください。クリップボードにURLがあれば自動で入れます。";
-    [alert addButtonWithTitle:@"追加"];
-    [alert addButtonWithTitle:@"キャンセル"];
+    alert.messageText = @"Add URL";
+    alert.informativeText = @"Enter a YouTube URL. A copied URL is added here.";
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
 
     NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 420, 24)];
     input.placeholderString = @"https://www.youtube.com/watch?v=...";
@@ -445,7 +445,7 @@
 
 - (void)addURLString:(NSString *)url {
     if (![self isSupportedURL:url]) {
-        [self showMessage:@"URLを追加できません" info:@"http://、https://、youtube.com、youtu.be のURLを入力してください。"];
+        [self showMessage:@"Can't Add URL" info:@"Enter a youtube.com or youtu.be URL."];
         return;
     }
 
@@ -484,7 +484,7 @@
     NSMutableArray *items = [self.songs mutableCopy] ?: [NSMutableArray array];
     [items addObject:@{@"label": label, @"url": url}];
     if (![self saveSongs:items]) {
-        [self showMessage:@"URLを追加できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        [self showMessage:@"Can't Add URL" info:@"Could not save the song list."];
         return;
     }
     self.songs = items;
@@ -504,10 +504,10 @@
 
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"表示名を変更";
-    alert.informativeText = @"メニューに表示する曲名を入力してください。";
-    [alert addButtonWithTitle:@"保存"];
-    [alert addButtonWithTitle:@"キャンセル"];
+    alert.messageText = @"Rename";
+    alert.informativeText = @"Enter a song name.";
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Cancel"];
 
     NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 420, 24)];
     input.stringValue = currentLabel;
@@ -525,7 +525,7 @@
     items[sender.tag] = updated;
 
     if (![self saveSongs:items]) {
-        [self showMessage:@"表示名を変更できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        [self showMessage:@"Can't Rename" info:@"Could not save the song list."];
         return;
     }
     self.songs = items;
@@ -535,14 +535,14 @@
 - (void)deleteSong:(NSMenuItem *)sender {
     if (sender.tag < 0 || sender.tag >= self.songs.count) return;
     NSDictionary *song = self.songs[sender.tag];
-    NSString *title = song[@"label"] ?: song[@"url"] ?: @"無題";
+    NSString *title = song[@"label"] ?: song[@"url"] ?: @"Untitled";
 
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"曲を削除";
-    alert.informativeText = [NSString stringWithFormat:@"「%@」を曲リストから削除します。再生中の音は停止しません。", title];
-    [alert addButtonWithTitle:@"削除"];
-    [alert addButtonWithTitle:@"キャンセル"];
+    alert.messageText = @"Delete Song";
+    alert.informativeText = [NSString stringWithFormat:@"Delete \"%@\" from the list? Music will keep playing.", title];
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
     alert.alertStyle = NSAlertStyleWarning;
 
     if ([alert runModal] != NSAlertFirstButtonReturn) return;
@@ -550,7 +550,7 @@
     NSMutableArray *items = [self.songs mutableCopy];
     [items removeObjectAtIndex:sender.tag];
     if (![self saveSongs:items]) {
-        [self showMessage:@"曲を削除できません" info:@"曲リストファイルへの書き込みに失敗しました。"];
+        [self showMessage:@"Can't Delete Song" info:@"Could not save the song list."];
         return;
     }
     self.songs = items;
@@ -678,13 +678,16 @@
 
 - (NSString *)formatDurationLabel:(NSTimeInterval)value {
     NSInteger seconds = MAX(0, (NSInteger)value);
-    if (seconds % 3600 == 0) return [NSString stringWithFormat:@"%ld時間", (long)(seconds / 3600)];
-    if (seconds % 60 == 0) return [NSString stringWithFormat:@"%ld分", (long)(seconds / 60)];
+    if (seconds % 3600 == 0) {
+        NSInteger hours = seconds / 3600;
+        return [NSString stringWithFormat:@"%ld hour%@", (long)hours, hours == 1 ? @"" : @"s"];
+    }
+    if (seconds % 60 == 0) return [NSString stringWithFormat:@"%ld min", (long)(seconds / 60)];
     return [self formatTime:value];
 }
 
 - (NSString *)durationMenuTitle {
-    if (!self.durationOverrideEnabled) return @"自動（曲の長さ）";
+    if (!self.durationOverrideEnabled) return @"Auto";
     return [self formatDurationLabel:self.duration];
 }
 
