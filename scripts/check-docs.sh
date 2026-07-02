@@ -34,5 +34,7 @@ check_pair "focus loop concept" "集中用の1曲ループ" 'menuItemWithTitle:@
 check_pair "shuffle loop" '`Shuffle`' "playOmakaseLoop"
 check_pair "pause semantics" '`Pause`は同じ曲の同じ位置から戻る' '@"Pause"'
 check_pair "stop semantics" '`Stop`は再生を終了' 'menuItemWithTitle:@"Stop"'
+check_pair "timer keeps elapsed playback" "開始からの合計時間としてタイマーを延長" "selectedDuration <= elapsed"
+check_pair "Intel and Apple Silicon Homebrew support" "brew install jq mpv yt-dlp" '@"/usr/local/bin"'
 
 echo "README contract checks passed."
