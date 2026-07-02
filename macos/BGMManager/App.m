@@ -57,7 +57,21 @@
     [self ensureSongsFile];
     NSData *data = [NSData dataWithContentsOfFile:self.songsPath];
     NSArray *decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    self.songs = [decoded isKindOfClass:[NSArray class]] ? decoded : @[];
+    if (![decoded isKindOfClass:[NSArray class]]) {
+        self.songs = @[];
+        return;
+    }
+
+    NSMutableArray<NSDictionary *> *validSongs = [NSMutableArray array];
+    for (id item in decoded) {
+        if (![item isKindOfClass:[NSDictionary class]]) continue;
+        NSString *url = item[@"url"];
+        NSString *label = item[@"label"];
+        if (![url isKindOfClass:[NSString class]] || url.length == 0) continue;
+        if (![label isKindOfClass:[NSString class]] || label.length == 0) label = url;
+        [validSongs addObject:@{@"label": label, @"url": url}];
+    }
+    self.songs = validSongs;
 }
 
 - (void)ensureSongsFile {
@@ -288,8 +302,17 @@
     [[NSFileManager defaultManager] removeItemAtPath:self.socketPath error:nil];
     [self removeOversizedPlaybackLog];
 
+    NSString *mpvPath = [self executablePathForName:@"mpv"];
+    NSString *ytDlpPath = [self executablePathForName:@"yt-dlp"];
+    if (!mpvPath || !ytDlpPath) {
+        NSString *missing = !mpvPath ? @"mpv" : @"yt-dlp";
+        [self showMessage:@"Can't Start Playback"
+                     info:[NSString stringWithFormat:@"%@ was not found. Run: brew install mpv yt-dlp", missing]];
+        return;
+    }
+
     NSTask *task = [[NSTask alloc] init];
-    task.executableURL = [NSURL fileURLWithPath:@"/opt/homebrew/bin/mpv"];
+    task.executableURL = [NSURL fileURLWithPath:mpvPath];
     NSMutableDictionary *environment = [[[NSProcessInfo processInfo] environment] mutableCopy];
     environment[@"PATH"] = @"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
     task.environment = environment;
@@ -324,6 +347,7 @@
         [self rebuildMenu];
     } else {
         [self clearPlaybackState];
+        [self showMessage:@"Can't Start Playback" info:error.localizedDescription ?: @"mpv could not be started."];
     }
 }
 
@@ -408,9 +432,12 @@
     NSTimeInterval selectedDuration = [sender.representedObject doubleValue];
     self.durationOverrideEnabled = YES;
     if (self.mpvTask.isRunning) {
-        self.startedAt = [NSDate date];
-        self.pausedAt = self.paused ? [NSDate date] : nil;
-        self.accumulatedPausedDuration = 0;
+        NSTimeInterval elapsed = [self playbackElapsedDuration];
+        if (selectedDuration <= elapsed) {
+            [self showMessage:@"Can't Shorten Timer" info:@"Select a duration longer than the elapsed playback time."];
+            [self rebuildMenu];
+            return;
+        }
         self.duration = selectedDuration;
         [self sendMPVCommand:@[@"set_property", @"loop-file", @"inf"]];
         [self scheduleStopTimer];
@@ -449,9 +476,13 @@
         return;
     }
 
-    NSString *title = [self titleForURL:url];
-    if (title.length == 0) title = url;
-    [self appendSongWithLabel:title url:url];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSString *title = [self titleForURL:url];
+        if (title.length == 0) title = url;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendSongWithLabel:title url:url];
+        });
+    });
 }
 
 - (BOOL)isSupportedURL:(NSString *)url {
@@ -464,8 +495,10 @@
 }
 
 - (NSString *)titleForURL:(NSString *)url {
+    NSString *ytDlpPath = [self executablePathForName:@"yt-dlp"];
+    if (!ytDlpPath) return nil;
     NSTask *task = [[NSTask alloc] init];
-    task.executableURL = [NSURL fileURLWithPath:@"/opt/homebrew/bin/yt-dlp"];
+    task.executableURL = [NSURL fileURLWithPath:ytDlpPath];
     task.arguments = @[@"--no-playlist", @"--get-title", url];
     NSPipe *pipe = [NSPipe pipe];
     task.standardOutput = pipe;
@@ -477,6 +510,16 @@
     NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     NSString *title = [output componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]].firstObject;
     return [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+- (NSString *)executablePathForName:(NSString *)name {
+    NSArray<NSString *> *directories = @[@"/opt/homebrew/bin", @"/usr/local/bin", @"/usr/bin", @"/bin"];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    for (NSString *directory in directories) {
+        NSString *path = [directory stringByAppendingPathComponent:name];
+        if ([fileManager isExecutableFileAtPath:path]) return path;
+    }
+    return nil;
 }
 
 - (void)appendSongWithLabel:(NSString *)label url:(NSString *)url {
